@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Onboarding Chatbot</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1153ff;
+        }
+        .chat-bubble {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .typing-indicator::after {
+            content: '...';
+            animation: typing 1s infinite;
+        }
+        @keyframes typing {
+            0% { content: '.'; }
+            33% { content: '..'; }
+            66% { content: '...'; }
+        }
+        .radio-input:checked + label {
+            background-color: #1153ff;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
+            <!-- Chat Header -->
+            <div class="bg-[#1153ff] p-4 text-white">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <img src="https://firebasestorage.googleapis.com/v0/b/widecanvas-d0dd4.appspot.com/o/logos%2FScreenshot%202025-01-24%20at%204.08%20Background%20Removed.17%E2%80%AFPM.png?alt=media&token=922f57b4-7400-4c15-aaea-4d2692d05e2d" 
+                             alt="Logo" 
+                             class="h-8 w-auto">
+                        <h1 class="ml-2 text-lg font-semibold">Onboarding Assistant</h1>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Messages -->
+            <div class="h-[400px] overflow-y-auto p-4" ref="chatContainer">
+                <div v-for="(message, index) in messages" :key="index" class="mb-4 chat-bubble">
+                    <div :class="message.isBot ? 'flex items-start' : 'flex items-start justify-end'">
+                        <div v-if="message.isBot" class="mr-2">
+                            <div class="w-8 h-8 rounded-full bg-[#1153ff] flex items-center justify-center">
+                                <i class="bi bi-robot text-white"></i>
+                            </div>
+                        </div>
+                        <div :class="message.isBot ? 
+                            'bg-gray-100 rounded-lg p-3 max-w-[80%]' : 
+                            'bg-[#1153ff] text-white rounded-lg p-3 max-w-[80%]'">
+                            <div v-html="message.text"></div>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="isTyping" class="flex items-start mb-4 chat-bubble">
+                    <div class="mr-2">
+                        <div class="w-8 h-8 rounded-full bg-[#1153ff] flex items-center justify-center">
+                            <i class="bi bi-robot text-white"></i>
+                        </div>
+                    </div>
+                    <div class="bg-gray-100 rounded-lg p-3">
+                        <span class="typing-indicator">Typing</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="border-t p-4">
+                <div v-if="currentQuestionIndex === 2" class="mb-4">
+                    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                        <div class="flex items-center">
+                            <input type="radio" id="owner" v-model="operatorType" value="Owner Operator" class="hidden radio-input">
+                            <label for="owner" class="w-full sm:w-auto px-4 py-2 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors text-center">
+                                Owner Operator
+                            </label>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="radio" id="fleet" v-model="operatorType" value="Fleet Owner" class="hidden radio-input">
+                            <label for="fleet" class="w-full sm:w-auto px-4 py-2 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors text-center">
+                                Fleet Owner
+                            </label>
+                        </div>
+                    </div>
+                    <button 
+                        @click="submitOperatorType"
+                        :disabled="!operatorType"
+                        class="w-full mt-3 bg-[#1153ff] text-white px-4 py-2 rounded-lg hover:bg-[#0e47d9] disabled:opacity-50 transition-colors"
+                    >
+                        Submit
+                    </button>
+                </div>
+                <div v-else class="flex gap-2">
+                    <input 
+                        type="text" 
+                        v-model="userInput"
+                        @keyup.enter="sendMessage"
+                        :placeholder="currentQuestion"
+                        class="flex-1 p-2 border rounded-lg focus:outline-none focus:border-[#1153ff]"
+                        :disabled="conversation.completed"
+                    >
+                    <button 
+                        @click="sendMessage"
+                        :disabled="!userInput || conversation.completed"
+                        class="bg-[#1153ff] text-white px-4 py-2 rounded-lg hover:bg-[#0e47d9] disabled:opacity-50 transition-colors"
+                    >
+                        <i class="bi bi-send"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    messages: [],
+                    userInput: '',
+                    isTyping: false,
+                    currentQuestionIndex: 0,
+                    operatorType: '',
+                    questions: [
+                        "What should I call you?",
+                        "What's the contact number I should use to send you updates?",
+                        "Please select your operation type:"
+                    ],
+                    conversation: {
+                        name: '',
+                        phone: '',
+                        operatorType: '',
+                        completed: false
+                    }
+                }
+            },
+            computed: {
+                currentQuestion() {
+                    return this.questions[this.currentQuestionIndex];
+                }
+            },
+            methods: {
+                async sendMessage() {
+                    if (!this.userInput.trim() || this.conversation.completed) return;
+
+                    this.messages.push({
+                        text: this.userInput,
+                        isBot: false
+                    });
+
+                    const response = this.processUserInput(this.userInput);
+                    this.userInput = '';
+
+                    this.isTyping = true;
+                    await this.scrollToBottom();
+                    
+                    setTimeout(async () => {
+                        this.isTyping = false;
+                        this.messages.push({
+                            text: response,
+                            isBot: true
+                        });
+                        await this.scrollToBottom();
+                    }, 1000);
+                },
+                processUserInput(input) {
+                    switch(this.currentQuestionIndex) {
+                        case 0:
+                            this.conversation.name = input;
+                            this.currentQuestionIndex++;
+                            return `Nice to meet you, ${input}! ${this.questions[1]}`;
+                        case 1:
+                            if (!this.validatePhone(input)) {
+                                return "Please enter a valid phone number (10 digits)";
+                            }
+                            this.conversation.phone = input;
+                            this.currentQuestionIndex++;
+                            return this.questions[2];
+                        default:
+                            return "The conversation is complete.";
+                    }
+                },
+                async submitOperatorType() {
+                    if (!this.operatorType) return;
+                    
+                    this.messages.push({
+                        text: this.operatorType,
+                        isBot: false
+                    });
+
+                    this.conversation.operatorType = this.operatorType;
+                    this.conversation.completed = true;
+
+                    this.isTyping = true;
+                    await this.scrollToBottom();
+                    
+                    setTimeout(async () => {
+                        this.isTyping = false;
+                        this.messages.push({
+                            text: `Thank you for providing your information! We'll be in touch soon.<br><br>Summary:<br>Name: ${this.conversation.name}<br>Phone: ${this.conversation.phone}<br>Operation Type: ${this.conversation.operatorType}`,
+                            isBot: true
+                        });
+                        await this.scrollToBottom();
+                    }, 1000);
+                },
+                validatePhone(phone) {
+                    const phoneRegex = /^\d{10}$/;
+                    return phoneRegex.test(phone.replace(/\D/g, ''));
+                },
+                async scrollToBottom() {
+                    await this.$nextTick();
+                    const container = this.$refs.chatContainer;
+                    container.scrollTop = container.scrollHeight;
+                }
+            },
+            mounted() {
+                this.messages.push({
+                    text: `Hi there! 👋 ${this.questions[0]}`,
+                    isBot: true
+                });
+            }
+        }).mount('#app')
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
